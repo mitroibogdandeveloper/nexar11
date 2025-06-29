@@ -4,8 +4,7 @@ import {
 	Users,
 	Package,
 	Settings,
-	ChevronRight,
-	Edit, // Importul pentru iconița de editare
+	Edit,
 	Trash2,
 	CheckCircle,
 	XCircle,
@@ -15,19 +14,16 @@ import {
 	Filter,
 	User,
 	Building,
-	Calendar,
-	MapPin,
 	ArrowUpDown,
-	Check,
-	X,
 	RefreshCw,
 	Shield,
 } from "lucide-react";
-import { admin, supabase } from "../lib/supabase"; // Asigură-te că path-ul este corect
+import { admin, supabase } from "../lib/supabase";
 
 const AdminPage = () => {
-	const [activeTab, setActiveTab] = useState("listings");
+	const [activeTab, setActiveTab] = useState("pending");
 	const [listings, setListings] = useState<any[]>([]);
+	const [pendingListings, setPendingListings] = useState<any[]>([]);
 	const [users, setUsers] = useState<any[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -77,6 +73,24 @@ const AdminPage = () => {
 		}
 	};
 
+	const loadPendingListings = async () => {
+		setIsLoading(true);
+		setError(null);
+		try {
+			const { data, error } = await admin.getPendingListings();
+			if (error) {
+				setError(`Eroare la încărcarea anunțurilor în așteptare: ${error.message}`);
+			} else {
+				setPendingListings(data || []);
+			}
+		} catch (err: any) {
+			setError(`Eroare neașteptată la încărcarea anunțurilor în așteptare: ${err.message}`);
+			console.error("Error loading pending listings:", err);
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
 	const loadUsers = async () => {
 		setIsLoading(true);
 		setError(null);
@@ -105,25 +119,32 @@ const AdminPage = () => {
 		if (isAdmin) {
 			if (activeTab === "listings") {
 				loadListings();
+			} else if (activeTab === "pending") {
+				loadPendingListings();
 			} else if (activeTab === "users") {
 				loadUsers();
 			}
 		}
 	}, [activeTab, isAdmin]); // Reîncarcă la schimbarea tab-ului sau a statutului admin
 
-	const handleUpdateListingStatus = async (
+	const handleApproveRejectListing = async (
 		listingId: string,
-		currentStatus: string,
+		action: 'approve' | 'reject'
 	) => {
 		setIsProcessing((prev) => ({ ...prev, [listingId]: true }));
-		const newStatus = currentStatus === "active" ? "inactive" : "active";
+		const newStatus = action === 'approve' ? 'active' : 'rejected';
 		try {
 			const { error } = await admin.updateListingStatus(listingId, newStatus);
 			if (error) {
-				alert(`Eroare la actualizarea statusului: ${error.message}`);
+				alert(`Eroare la ${action === 'approve' ? 'aprobarea' : 'respingerea'} anunțului: ${error.message}`);
 			} else {
-				alert(`Statusul anunțului a fost actualizat la ${newStatus}.`);
-				loadListings(); // Reîncarcă lista pentru a reflecta schimbarea
+				alert(`Anunțul a fost ${action === 'approve' ? 'aprobat' : 'respins'} cu succes.`);
+				// Reîncarcă lista pentru a reflecta schimbarea
+				if (activeTab === 'pending') {
+					loadPendingListings();
+				} else {
+					loadListings();
+				}
 			}
 		} catch (err: any) {
 			alert(`A apărut o eroare neașteptată: ${err.message}`);
@@ -141,7 +162,11 @@ const AdminPage = () => {
 				alert(`Eroare la ștergerea anunțului: ${error.message}`);
 			} else {
 				alert("Anunțul a fost șters cu succes.");
-				setListings((prev) => prev.filter((l) => l.id !== listingId)); // Actualizează UI imediat
+				if (activeTab === 'pending') {
+					setPendingListings((prev) => prev.filter((l) => l.id !== listingId));
+				} else {
+					setListings((prev) => prev.filter((l) => l.id !== listingId));
+				}
 			}
 		} catch (err: any) {
 			alert(`A apărut o eroare neașteptată: ${err.message}`);
@@ -215,7 +240,7 @@ const AdminPage = () => {
 			}
 			console.log("Profile deleted successfully for userId:", userId);
 
-			// NOU: Ștergem utilizatorul din auth.users
+			// 4. Ștergem utilizatorul din auth.users
 			console.log(
 				"Attempting to delete user from auth.users for userId:",
 				userId,
@@ -241,6 +266,7 @@ const AdminPage = () => {
 
 			// Reîncărcăm anunțurile pentru a reflecta schimbările
 			loadListings();
+			loadPendingListings();
 		} catch (err: any) {
 			console.error("Error in handleDeleteUser:", err);
 			alert("A apărut o eroare la ștergerea utilizatorului");
@@ -275,13 +301,35 @@ const AdminPage = () => {
 			return 0;
 		});
 
+	const filteredPendingListings = pendingListings
+		.filter((listing) => {
+			const matchesSearch = listing.title
+				.toLowerCase()
+				.includes(searchQuery.toLowerCase());
+			const matchesSellerType =
+				sellerTypeFilter === "all" || listing.seller_type === sellerTypeFilter;
+			return matchesSearch && matchesSellerType;
+		})
+		.sort((a, b) => {
+			const aValue = a[sortField];
+			const bValue = b[sortField];
+
+			if (typeof aValue === "string" && typeof bValue === "string") {
+				return sortDirection === "asc"
+					? aValue.localeCompare(bValue)
+					: bValue.localeCompare(aValue);
+			}
+			if (typeof aValue === "number" && typeof bValue === "number") {
+				return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
+			}
+			return 0;
+		});
+
 	const filteredUsers = users
 		.filter((user) => {
 			const matchesSearch =
 				user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
 				user.name.toLowerCase().includes(searchQuery.toLowerCase());
-			// Nu aplicăm filtrarea de stare pentru utilizatori direct aici, deoarece statusFilter este pentru anunțuri.
-			// Poți adăuga un userStatusFilter separat dacă este necesar.
 			return matchesSearch;
 		})
 		.sort((a, b) => {
@@ -347,6 +395,18 @@ const AdminPage = () => {
 							<ul>
 								<li className="mb-2">
 									<button
+										onClick={() => setActiveTab("pending")}
+										className={`w-full text-left flex items-center p-3 rounded-md transition-colors ${
+											activeTab === "pending"
+												? "bg-blue-500 text-white shadow-md"
+												: "text-gray-700 hover:bg-gray-200"
+										}`}
+									>
+										<Package className="h-5 w-5 mr-3" /> Anunțuri în Așteptare
+									</button>
+								</li>
+								<li className="mb-2">
+									<button
 										onClick={() => setActiveTab("listings")}
 										className={`w-full text-left flex items-center p-3 rounded-md transition-colors ${
 											activeTab === "listings"
@@ -354,7 +414,7 @@ const AdminPage = () => {
 												: "text-gray-700 hover:bg-gray-200"
 										}`}
 									>
-										<Package className="h-5 w-5 mr-3" /> Anunțuri
+										<Package className="h-5 w-5 mr-3" /> Toate Anunțurile
 									</button>
 								</li>
 								<li className="mb-2">
@@ -405,11 +465,193 @@ const AdminPage = () => {
 								</div>
 							)}
 
-							{/* Tab Anunțuri */}
+							{/* Tab Anunțuri în Așteptare */}
+							{activeTab === "pending" && !isLoading && !error && (
+								<div>
+									<h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center">
+										<Package className="h-6 w-6 mr-2" /> Anunțuri în Așteptare
+									</h2>
+									<div className="mb-4 flex flex-col sm:flex-row gap-4">
+										<div className="relative w-full sm:w-1/2">
+											<input
+												type="text"
+												placeholder="Căutați după titlu..."
+												className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+												value={searchQuery}
+												onChange={(e) => setSearchQuery(e.target.value)}
+											/>
+											<Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+										</div>
+										<div className="relative w-full sm:w-1/4">
+											<select
+												className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+												value={sellerTypeFilter}
+												onChange={(e) => setSellerTypeFilter(e.target.value)}
+											>
+												<option value="all">Toate Tipurile Vânzătorului</option>
+												<option value="individual">Individual</option>
+												<option value="dealer">Dealer</option>
+											</select>
+											<User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+										</div>
+									</div>
+
+									{filteredPendingListings.length === 0 ? (
+										<div className="bg-white rounded-lg shadow p-8 text-center">
+											<Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+											<h3 className="text-lg font-semibold text-gray-900 mb-2">
+												Nu există anunțuri în așteptare
+											</h3>
+											<p className="text-gray-600">
+												Toate anunțurile au fost procesate. Reveniți mai târziu pentru noi anunțuri.
+											</p>
+										</div>
+									) : (
+										<div className="overflow-x-auto rounded-lg shadow border border-gray-200">
+											<table className="min-w-full divide-y divide-gray-200">
+												<thead className="bg-gray-100">
+													<tr>
+														<th
+															className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+															onClick={() => handleSort("title")}
+														>
+															Titlu {getSortIcon("title")}
+														</th>
+														<th
+															className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+															onClick={() => handleSort("seller_name")}
+														>
+															Vânzător {getSortIcon("seller_name")}
+														</th>
+														<th
+															className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+															onClick={() => handleSort("price")}
+														>
+															Preț {getSortIcon("price")}
+														</th>
+														<th
+															className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+															onClick={() => handleSort("created_at")}
+														>
+															Data {getSortIcon("created_at")}
+														</th>
+														<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+															Acțiuni
+														</th>
+													</tr>
+												</thead>
+												<tbody className="bg-white divide-y divide-gray-200">
+													{filteredPendingListings.map((listing) => (
+														<tr key={listing.id} className="hover:bg-gray-50">
+															<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+																<div>
+																	<div>{listing.title}</div>
+																	<div className="text-xs text-gray-500">
+																		{listing.brand} {listing.model}
+																	</div>
+																</div>
+															</td>
+															<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+																{listing.profiles?.name ||
+																	listing.seller_name}{" "}
+																(
+																{listing.profiles?.seller_type ||
+																	listing.seller_type}
+																)
+															</td>
+															<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+																{new Intl.NumberFormat("ro-RO", {
+																	style: "currency",
+																	currency: "EUR",
+																}).format(listing.price)}
+															</td>
+															<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+																{new Date(listing.created_at).toLocaleDateString('ro-RO')}
+															</td>
+															<td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+																<div className="flex items-center space-x-3">
+																	<button
+																		onClick={() =>
+																			navigate(`/anunt/${listing.id}`)
+																		}
+																		className="text-blue-600 hover:text-blue-800 transition-colors"
+																		title="Vezi anunțul"
+																	>
+																		<Eye className="h-5 w-5" />
+																	</button>
+																	<button
+																		onClick={() =>
+																			navigate(`/editeaza-anunt/${listing.id}`)
+																		}
+																		className="text-indigo-600 hover:text-indigo-800 transition-colors"
+																		title="Editează anunțul"
+																	>
+																		<Edit className="h-5 w-5" />
+																	</button>
+																	<button
+																		onClick={() =>
+																			handleApproveRejectListing(
+																				listing.id,
+																				'approve'
+																			)
+																		}
+																		disabled={isProcessing[listing.id]}
+																		className="p-1 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-green-100 text-green-600 hover:bg-green-200"
+																		title="Aprobă anunțul"
+																	>
+																		{isProcessing[listing.id] ? (
+																			<div className="h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+																		) : (
+																			<CheckCircle className="h-5 w-5" />
+																		)}
+																	</button>
+																	<button
+																		onClick={() =>
+																			handleApproveRejectListing(
+																				listing.id,
+																				'reject'
+																			)
+																		}
+																		disabled={isProcessing[listing.id]}
+																		className="p-1 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-red-100 text-red-600 hover:bg-red-200"
+																		title="Respinge anunțul"
+																	>
+																		{isProcessing[listing.id] ? (
+																			<div className="h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+																		) : (
+																			<XCircle className="h-5 w-5" />
+																		)}
+																	</button>
+																	<button
+																		onClick={() =>
+																			handleDeleteListing(listing.id)
+																		}
+																		disabled={isProcessing[listing.id]}
+																		className="text-red-600 hover:text-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+																		title="Șterge anunțul"
+																	>
+																		{isProcessing[listing.id] ? (
+																			<div className="h-5 w-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+																		) : (
+																			<Trash2 className="h-5 w-5" />
+																		)}
+																	</button>
+																</div>
+															</td>
+														</tr>
+													))}
+												</tbody>
+											</table>
+										</div>
+									)}
+								</div>
+							)}
+
+							{/* Tab Toate Anunțurile */}
 							{activeTab === "listings" && !isLoading && !error && (
 								<div>
 									<h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center">
-										<Package className="h-6 w-6 mr-2" /> Anunțuri Gestionare
+										<Package className="h-6 w-6 mr-2" /> Toate Anunțurile
 									</h2>
 									<div className="mb-4 flex flex-col sm:flex-row gap-4">
 										<div className="relative w-full sm:w-1/2">
@@ -432,6 +674,7 @@ const AdminPage = () => {
 												<option value="active">Active</option>
 												<option value="inactive">Inactive</option>
 												<option value="pending">În așteptare</option>
+												<option value="rejected">Respinse</option>
 											</select>
 											<Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
 										</div>
@@ -496,10 +739,15 @@ const AdminPage = () => {
 													filteredListings.map((listing) => (
 														<tr key={listing.id} className="hover:bg-gray-50">
 															<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-																{listing.title}
+																<div>
+																	<div>{listing.title}</div>
+																	<div className="text-xs text-gray-500">
+																		{listing.brand} {listing.model}
+																	</div>
+																</div>
 															</td>
 															<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-																{listing.profiles?.seller_name ||
+																{listing.profiles?.name ||
 																	listing.seller_name}{" "}
 																(
 																{listing.profiles?.seller_type ||
@@ -519,60 +767,75 @@ const AdminPage = () => {
 																			? "bg-green-100 text-green-800"
 																			: listing.status === "pending"
 																			? "bg-yellow-100 text-yellow-800"
-																			: "bg-red-100 text-red-800"
+																			: listing.status === "rejected"
+																			? "bg-red-100 text-red-800"
+																			: "bg-gray-100 text-gray-800"
 																	}`}
 																>
-																	{listing.status}
+																	{listing.status === "active" ? "Activ" : 
+																	 listing.status === "pending" ? "În așteptare" : 
+																	 listing.status === "rejected" ? "Respins" : 
+																	 listing.status}
 																</span>
 															</td>
 															<td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
 																<div className="flex items-center space-x-3">
 																	<button
 																		onClick={() =>
-																			navigate(`/listing/${listing.id}`)
+																			navigate(`/anunt/${listing.id}`)
 																		}
 																		className="text-blue-600 hover:text-blue-800 transition-colors"
 																		title="Vezi anunțul"
 																	>
 																		<Eye className="h-5 w-5" />
 																	</button>
-																	{/* Butonul de editare adăugat aici */}
 																	<button
 																		onClick={() =>
-																			navigate(`/edit-listing/${listing.id}`)
+																			navigate(`/editeaza-anunt/${listing.id}`)
 																		}
 																		className="text-indigo-600 hover:text-indigo-800 transition-colors"
 																		title="Editează anunțul"
 																	>
 																		<Edit className="h-5 w-5" />
 																	</button>
-																	<button
-																		onClick={() =>
-																			handleUpdateListingStatus(
-																				listing.id,
-																				listing.status,
-																			)
-																		}
-																		disabled={isProcessing[listing.id]}
-																		className={`p-1 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-																			listing.status === "active"
-																				? "bg-red-100 text-red-600 hover:bg-red-200"
-																				: "bg-green-100 text-green-600 hover:bg-green-200"
-																		}`}
-																		title={
-																			listing.status === "active"
-																				? "Dezactivează"
-																				: "Activează"
-																		}
-																	>
-																		{isProcessing[listing.id] ? (
-																			<div className="h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-																		) : listing.status === "active" ? (
-																			<XCircle className="h-5 w-5" />
-																		) : (
-																			<CheckCircle className="h-5 w-5" />
-																		)}
-																	</button>
+																	{listing.status !== "active" && (
+																		<button
+																			onClick={() =>
+																				handleApproveRejectListing(
+																					listing.id,
+																					'approve'
+																				)
+																			}
+																			disabled={isProcessing[listing.id]}
+																			className="p-1 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-green-100 text-green-600 hover:bg-green-200"
+																			title="Aprobă anunțul"
+																		>
+																			{isProcessing[listing.id] ? (
+																				<div className="h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+																			) : (
+																				<CheckCircle className="h-5 w-5" />
+																			)}
+																		</button>
+																	)}
+																	{listing.status !== "rejected" && (
+																		<button
+																			onClick={() =>
+																				handleApproveRejectListing(
+																					listing.id,
+																					'reject'
+																				)
+																			}
+																			disabled={isProcessing[listing.id]}
+																			className="p-1 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-red-100 text-red-600 hover:bg-red-200"
+																			title="Respinge anunțul"
+																		>
+																			{isProcessing[listing.id] ? (
+																				<div className="h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+																			) : (
+																				<XCircle className="h-5 w-5" />
+																			)}
+																		</button>
+																	)}
 																	<button
 																		onClick={() =>
 																			handleDeleteListing(listing.id)
@@ -645,7 +908,6 @@ const AdminPage = () => {
 													>
 														Înregistrat {getSortIcon("created_at")}
 													</th>
-													{/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th> */}
 													<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
 														Admin
 													</th>
@@ -679,15 +941,6 @@ const AdminPage = () => {
 															<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
 																{new Date(user.created_at).toLocaleDateString()}
 															</td>
-															{/* <td className="px-6 py-4 whitespace-nowrap text-sm">
-																<span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-																	user.suspended
-																		? "bg-red-100 text-red-800"
-																		: "bg-green-100 text-green-800"
-																}`}>
-																	{user.suspended ? "Suspended" : "Active"}
-																</span>
-															</td> */}
 															<td className="px-6 py-4 whitespace-nowrap text-sm">
 																{user.is_admin ? (
 																	<Shield
@@ -703,32 +956,6 @@ const AdminPage = () => {
 															</td>
 															<td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
 																<div className="flex items-center space-x-3">
-																	{/* Butonul de toggle user status a fost comentat anterior, îl păstrăm comentat */}
-																	{/* <button
-																		onClick={() =>
-																			handleToggleUserStatus(user.user_id, user.suspended)
-																		}
-																		disabled={isProcessing[user.user_id]}
-																		className={`p-1 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-																			user.suspended
-																				? "bg-green-100 text-green-600 hover:bg-green-200"
-																				: "bg-red-100 text-red-600 hover:bg-red-200"
-																		}`}
-																		title={
-																			user.suspended
-																				? "Activează utilizatorul"
-																				: "Suspendă utilizatorul"
-																		}
-																	>
-																		{isProcessing[user.user_id] ? (
-																			<div className="h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-																		) : user.suspended ? (
-																			<Check className="h-5 w-5" />
-																		) : (
-																			<X className="h-5 w-5" />
-																		)}
-																	</button> */}
-
 																	<button
 																		onClick={() =>
 																			handleDeleteUser(user.user_id)
@@ -751,6 +978,19 @@ const AdminPage = () => {
 											</tbody>
 										</table>
 									</div>
+								</div>
+							)}
+
+							{/* Tab Setări */}
+							{activeTab === "settings" && !isLoading && !error && (
+								<div className="p-6 text-center">
+									<Settings className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+									<h3 className="text-xl font-semibold text-gray-900 mb-2">
+										Setări în dezvoltare
+									</h3>
+									<p className="text-gray-600">
+										Această secțiune va fi disponibilă în curând.
+									</p>
 								</div>
 							)}
 						</div>

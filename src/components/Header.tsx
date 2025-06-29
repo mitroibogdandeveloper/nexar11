@@ -12,6 +12,7 @@ const Header = () => {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [pendingListingsCount, setPendingListingsCount] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -64,6 +65,11 @@ const Header = () => {
           
           setUser(userData);
           localStorage.setItem('user', JSON.stringify(userData));
+          
+          // Dacă utilizatorul este admin, obținem numărul de anunțuri în așteptare
+          if (userData.isAdmin) {
+            loadPendingListingsCount();
+          }
         } else {
           console.warn('⚠️ Profile not found for authenticated user');
           
@@ -93,6 +99,11 @@ const Header = () => {
               
               setUser(userData);
               localStorage.setItem('user', JSON.stringify(userData));
+              
+              // Dacă utilizatorul este admin, obținem numărul de anunțuri în așteptare
+              if (userData.isAdmin) {
+                loadPendingListingsCount();
+              }
             } else {
               setUser({ 
                 id: currentUser.id, 
@@ -151,6 +162,11 @@ const Header = () => {
           setUser(userData);
           localStorage.setItem('user', JSON.stringify(userData));
           
+          // Dacă utilizatorul este admin, obținem numărul de anunțuri în așteptare
+          if (userData.isAdmin) {
+            loadPendingListingsCount();
+          }
+          
           // Redirect to home page after successful login
           if (location.pathname === '/auth') {
             navigate('/');
@@ -183,6 +199,11 @@ const Header = () => {
               setUser(userData);
               localStorage.setItem('user', JSON.stringify(userData));
               
+              // Dacă utilizatorul este admin, obținem numărul de anunțuri în așteptare
+              if (userData.isAdmin) {
+                loadPendingListingsCount();
+              }
+              
               // Redirect to home page after successful login
               if (location.pathname === '/auth') {
                 navigate('/');
@@ -208,6 +229,7 @@ const Header = () => {
         // User signed out
         setUser(null);
         setIsAdmin(false);
+        setPendingListingsCount(0);
         localStorage.removeItem('user');
         setIsLoading(false);
       }
@@ -216,6 +238,27 @@ const Header = () => {
     return () => {
       subscription.unsubscribe();
     };
+  };
+
+  // Funcție pentru a obține numărul de anunțuri în așteptare
+  const loadPendingListingsCount = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('listings')
+        .select('count', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      
+      if (error) {
+        console.error('Error fetching pending listings count:', error);
+        return;
+      }
+      
+      if (data) {
+        setPendingListingsCount(data);
+      }
+    } catch (err) {
+      console.error('Error in loadPendingListingsCount:', err);
+    }
   };
 
   const isActive = (path: string) => location.pathname === path;
@@ -239,6 +282,7 @@ const Header = () => {
         // Setăm starea utilizatorului la null
         setUser(null);
         setIsAdmin(false);
+        setPendingListingsCount(0);
         // Închidem meniul utilizatorului
         setIsUserMenuOpen(false);
         // Redirecționăm către pagina principală
@@ -373,10 +417,15 @@ const Header = () => {
                       {isAdmin && (
                         <Link
                           to="/admin"
-                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                          className="flex items-center justify-between px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                           onClick={() => setIsUserMenuOpen(false)}
                         >
-                          Admin Panel
+                          <span>Admin Panel</span>
+                          {pendingListingsCount > 0 && (
+                            <span className="bg-nexar-accent text-white text-xs font-bold px-2 py-1 rounded-full">
+                              {pendingListingsCount}
+                            </span>
+                          )}
                         </Link>
                       )}
                       <hr className="my-2" />
@@ -451,10 +500,15 @@ const Header = () => {
                   {isAdmin && (
                     <Link
                       to="/admin"
-                      className="block px-4 py-3 rounded-lg font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                      className="flex items-center justify-between px-4 py-3 rounded-lg font-medium text-gray-700 hover:bg-gray-100 transition-colors"
                       onClick={() => setIsMenuOpen(false)}
                     >
-                      Admin Panel
+                      <span>Admin Panel</span>
+                      {pendingListingsCount > 0 && (
+                        <span className="bg-nexar-accent text-white text-xs font-bold px-2 py-1 rounded-full">
+                          {pendingListingsCount}
+                        </span>
+                      )}
                     </Link>
                   )}
                   <button

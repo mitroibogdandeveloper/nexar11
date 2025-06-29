@@ -57,6 +57,7 @@ export interface Listing {
 	featured: boolean;
 	created_at: string;
 	updated_at: string;
+	status: "active" | "pending" | "rejected" | "sold";
 }
 
 export interface User {
@@ -712,6 +713,37 @@ export const listings = {
 		}
 	},
 
+	// Funcție pentru a obține anunțurile utilizatorului curent
+	getUserListings: async (userId: string, status?: string) => {
+		try {
+			console.log("🔍 Fetching user listings for user:", userId);
+
+			let query = supabase
+				.from("listings")
+				.select("*")
+				.eq("seller_id", userId)
+				.order("created_at", { ascending: false });
+
+			// Filtrăm după status dacă este specificat
+			if (status) {
+				query = query.eq("status", status);
+			}
+
+			const { data, error } = await query;
+
+			if (error) {
+				console.error("❌ Error fetching user listings:", error);
+				return { data: null, error };
+			}
+
+			console.log(`✅ Successfully fetched ${data?.length || 0} user listings`);
+			return { data, error: null };
+		} catch (err) {
+			console.error("💥 Error in listings.getUserListings:", err);
+			return { data: null, error: err };
+		}
+	},
+
 	// Funcție specială pentru admin să vadă toate anunțurile
 	getAllForAdmin: async () => {
 		try {
@@ -849,7 +881,7 @@ export const listings = {
 				seller_name: profile.name,
 				seller_type: profile.seller_type,
 				images: imageUrls,
-				status: "active", // Schimbăm la 'active' pentru a fi vizibil imediat
+				status: "pending", // Schimbăm la 'pending' pentru a necesita aprobare
 				views_count: 0,
 				favorites_count: 0,
 				featured: false,
@@ -892,7 +924,7 @@ export const listings = {
 			// 1. Obținem anunțul curent pentru a păstra imaginile existente
 			const { data: currentListing, error: fetchError } = await supabase
 				.from("listings")
-				.select("images, seller_id, seller_name")
+				.select("images, seller_id, seller_name, status")
 				.eq("id", id)
 				.single();
 
@@ -974,9 +1006,13 @@ export const listings = {
 			}
 
 			// 3. Actualizăm anunțul cu toate modificările
+			// Păstrăm statusul original dacă nu este specificat altul
+			const status = updates.status || currentListing.status;
+			
 			const updateData = {
 				...updates,
 				images: updatedImages,
+				status: status, // Păstrăm statusul sau folosim cel nou
 				updated_at: new Date().toISOString(),
 			};
 
@@ -1276,7 +1312,7 @@ export const admin = {
 		}
 	},
 
-	// Obține toate anunțurile pentru admin (inclusiv inactive)
+	// Obține toate anunțurile pentru admin (inclusiv inactive și în așteptare)
 	getAllListings: async () => {
 		try {
 			console.log("🔍 Fetching ALL listings for admin...");
@@ -1307,6 +1343,42 @@ export const admin = {
 			return { data, error: null };
 		} catch (err) {
 			console.error("💥 Error in listings.getAllForAdmin:", err);
+			return { data: null, error: err };
+		}
+	},
+
+	// Obține anunțurile în așteptare pentru admin
+	getPendingListings: async () => {
+		try {
+			console.log("🔍 Fetching pending listings for admin...");
+
+			const { data, error } = await supabase
+				.from("listings")
+				.select(
+					`
+          *,
+          profiles!listings_seller_id_fkey (
+            name,
+            email,
+            seller_type,
+            verified
+          )
+        `,
+				)
+				.eq("status", "pending")
+				.order("created_at", { ascending: false });
+
+			if (error) {
+				console.error("❌ Error fetching pending listings:", error);
+				return { data: null, error };
+			}
+
+			console.log(
+				`✅ Successfully fetched ${data?.length || 0} pending listings for admin`,
+			);
+			return { data, error: null };
+		} catch (err) {
+			console.error("💥 Error in admin.getPendingListings:", err);
 			return { data: null, error: err };
 		}
 	},

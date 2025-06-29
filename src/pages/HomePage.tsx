@@ -2,26 +2,22 @@ import React, { useState, useMemo, useRef, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
 	Search,
-	Star,
 	Shield,
 	Users,
 	TrendingUp,
 	ArrowRight,
 	CheckCircle,
-	Heart,
 	MapPin,
 	Calendar,
 	Gauge,
 	Filter,
 	X,
 	SlidersHorizontal,
-	Zap,
 	Building,
 	ChevronLeft,
 	ChevronRight,
 } from "lucide-react";
 import { listings, romanianCities } from "../lib/supabase";
-import FixSupabaseButton from "../components/FixSupabaseButton";
 
 const HomePage = () => {
 	const [searchParams] = useSearchParams();
@@ -41,14 +37,28 @@ const HomePage = () => {
 	const [allListings, setAllListings] = useState<any[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [loadingTimeout, setLoadingTimeout] = useState<NodeJS.Timeout | null>(null);
 	const navigate = useNavigate();
 	const itemsPerPage = 6; // Show 6 listings per page
 
 	// Load real listings from Supabase
 	useEffect(() => {
 		// Set a timeout to show an error message if loading takes too long
+		const timeout = setTimeout(() => {
+			if (isLoading) {
+				console.warn('Loading timeout reached in HomePage');
+				setError('Încărcarea durează mai mult decât de obicei. Te rugăm să reîmprospătezi pagina sau să verifici conexiunea.');
+				setIsLoading(false);
+			}
+		}, 15000); // 15 seconds timeout
+		
+		setLoadingTimeout(timeout);
 
 		loadListings();
+		
+		return () => {
+			if (loadingTimeout) clearTimeout(loadingTimeout);
+		};
 	}, [filters, searchQuery, currentPage]);
 
 	// Update filters when URL params change
@@ -85,9 +95,9 @@ const HomePage = () => {
 				mileage: listing.mileage,
 				location: listing.location,
 				images: listing.images || [],
-				rating: listing.rating || 4.5,
 				category: listing.category,
 				brand: listing.brand,
+				model: listing.model,
 				seller: listing.seller_name,
 				sellerId: listing.seller_id,
 				sellerType: listing.seller_type,
@@ -95,6 +105,11 @@ const HomePage = () => {
 			}));
 
 			setAllListings(formattedListings);
+			
+			if (loadingTimeout) {
+				clearTimeout(loadingTimeout);
+				setLoadingTimeout(null);
+			}
 		} catch (err) {
 			console.error("💥 Error in loadListings:", err);
 			setError("A apărut o eroare la încărcarea anunțurilor");
@@ -122,6 +137,7 @@ const HomePage = () => {
 				!searchQuery ||
 				listing.title.toLowerCase().includes(searchLower) ||
 				listing.brand.toLowerCase().includes(searchLower) ||
+				listing.model.toLowerCase().includes(searchLower) ||
 				listing.category.toLowerCase().includes(searchLower) ||
 				listing.location.toLowerCase().includes(searchLower) ||
 				listing.seller.toLowerCase().includes(searchLower);
@@ -241,8 +257,6 @@ const HomePage = () => {
 
 	const ListingRow = ({ listing }: { listing: any }) => {
 		const [currentImageIndex, setCurrentImageIndex] = useState(0);
-		const [isFavorite, setIsFavorite] = useState(false);
-		const [isTogglingFavorite, setIsTogglingFavorite] = useState(false);
 		const touchStartX = useRef<number>(0);
 		const touchEndX = useRef<number>(0);
 		const imageContainerRef = useRef<HTMLDivElement>(null);
@@ -295,32 +309,6 @@ const HomePage = () => {
 			e.stopPropagation();
 			// Navigate to seller profile
 			navigate(`/profil/${listing.sellerId}`);
-		};
-
-		const handleToggleFavorite = async (e: React.MouseEvent) => {
-			e.preventDefault();
-			e.stopPropagation();
-
-			setIsTogglingFavorite(true);
-
-			try {
-				// Simulate toggle for now - you'll need to implement the actual logic
-				setIsFavorite(!isFavorite);
-
-				// Here you would call the actual API to add/remove from favorites
-				// const { data: { user } } = await supabase.auth.getUser();
-				// if (user) {
-				//   if (isFavorite) {
-				//     await listings.removeFromFavorites(user.id, listing.id);
-				//   } else {
-				//     await listings.addToFavorites(user.id, listing.id);
-				//   }
-				// }
-			} catch (error) {
-				console.error("Error toggling favorite:", error);
-			} finally {
-				setIsTogglingFavorite(false);
-			}
 		};
 
 		// Funcție pentru a obține imaginea corectă
@@ -398,11 +386,6 @@ const HomePage = () => {
 								{listing.category}
 							</span>
 						</div>
-						<button
-							onClick={handleToggleFavorite}
-							disabled={isTogglingFavorite}
-							className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full p-2 hover:bg-white transition-colors"
-						></button>
 					</div>
 
 					<div className="flex-1 p-4 sm:p-6">
@@ -442,11 +425,6 @@ const HomePage = () => {
 										</div>
 									)}
 								</div>
-							</div>
-
-							<div className="flex items-center space-x-1 bg-gray-50 rounded-lg px-3 py-1 self-start">
-								<Star className="h-4 w-4 text-yellow-400 fill-current" />
-								<span className="text-sm font-semibold">{listing.rating}</span>
 							</div>
 						</div>
 
@@ -948,7 +926,6 @@ const HomePage = () => {
 										>
 											Încearcă din nou
 										</button>
-										<FixSupabaseButton buttonText="Repară Conexiunea" />
 									</div>
 								</div>
 							)}
@@ -1021,7 +998,6 @@ const HomePage = () => {
 									>
 										Încearcă din nou
 									</button>
-									<FixSupabaseButton buttonText="Repară Conexiunea" />
 								</div>
 							</div>
 						)}

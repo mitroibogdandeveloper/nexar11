@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { X, Plus, Check, AlertTriangle, Camera } from 'lucide-react';
 import { listings, isAuthenticated, supabase, romanianCities } from '../lib/supabase';
 import SuccessModal from '../components/SuccessModal';
-import FixSupabaseButton from '../components/FixSupabaseButton';
 
 const CreateListingPage = () => {
   const [currentStep, setCurrentStep] = useState(1);
@@ -15,6 +14,7 @@ const CreateListingPage = () => {
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdListingId, setCreatedListingId] = useState<string | null>(null);
+  const [loadingTimeout, setLoadingTimeout] = useState<NodeJS.Timeout | null>(null);
 
   const navigate = useNavigate();
   
@@ -371,7 +371,7 @@ const CreateListingPage = () => {
         seller_id: userProfile.id,
         seller_name: userProfile.name || 'Utilizator',
         seller_type: userProfile.seller_type,
-        status: 'active' // Anunțul va fi activ imediat
+        status: 'pending' // Anunțul va fi în așteptare până la aprobare
       };
       
       console.log('📝 Mapped listing data:', listingData);
@@ -445,7 +445,6 @@ const CreateListingPage = () => {
             >
               Completează Profilul
             </button>
-            <FixSupabaseButton buttonText="Repară Conexiunea" />
           </div>
         </div>
       </div>
@@ -1047,6 +1046,16 @@ const CreateListingPage = () => {
                 </div>
               </div>
 
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+                <h4 className="font-semibold text-yellow-800 mb-2 flex items-center">
+                  <AlertTriangle className="h-5 w-5 mr-2" />
+                  Notă importantă:
+                </h4>
+                <p className="text-yellow-700">
+                  Anunțul tău va fi trimis spre aprobare administratorilor. Vei fi notificat când anunțul va fi aprobat și publicat pe site.
+                </p>
+              </div>
+
               {errors.submit && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                   <p className="text-red-600 flex items-center">
@@ -1092,7 +1101,7 @@ const CreateListingPage = () => {
                   </>
                 ) : (
                   <>
-                    <span>Publică Anunțul</span>
+                    <span>Trimite spre aprobare</span>
                     <Check className="h-5 w-5" />
                   </>
                 )}
@@ -1108,8 +1117,8 @@ const CreateListingPage = () => {
         onClose={handleSuccessModalClose}
         onGoHome={handleGoHome}
         onViewListing={handleViewListing}
-        title="Felicitări!"
-        message="Anunțul a fost publicat cu succes! Acum este vizibil pentru toți utilizatorii platformei."
+        title="Anunț trimis spre aprobare!"
+        message="Anunțul tău a fost trimis spre aprobare. Vei fi notificat când acesta va fi aprobat și publicat pe site."
         showViewButton={true}
       />
     </div>

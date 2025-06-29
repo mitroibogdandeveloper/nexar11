@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Filter, Star, MapPin, Calendar, Gauge, ChevronLeft, ChevronRight, Settings, Fuel, User, X, SlidersHorizontal, Building, RefreshCw } from 'lucide-react';
+import { Search, Filter, MapPin, Calendar, Gauge, ChevronLeft, ChevronRight, Settings, Fuel, User, X, SlidersHorizontal, Building, RefreshCw } from 'lucide-react';
 import { listings, supabase, romanianCities } from '../lib/supabase';
-import FixSupabaseButton from '../components/FixSupabaseButton';
 
 const ListingsPage = () => {
   // On desktop, show filters by default. On mobile, hide them by default
@@ -28,6 +27,7 @@ const ListingsPage = () => {
   const [allListings, setAllListings] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadingTimeout, setLoadingTimeout] = useState<NodeJS.Timeout | null>(null);
  
   const itemsPerPage = 10;
   const navigate = useNavigate();
@@ -91,7 +91,6 @@ const ListingsPage = () => {
         mileage: listing.mileage,
         location: listing.location,
         image: listing.images && listing.images.length > 0 ? listing.images[0] : "https://images.pexels.com/photos/2116475/pexels-photo-2116475.jpeg",
-        rating: listing.rating || 4.5,
         seller: listing.seller_name,
         sellerId: listing.seller_id,
         sellerType: listing.seller_type,
@@ -272,11 +271,6 @@ const ListingsPage = () => {
                   </div>
                 )}
               </div>
-            </div>
-            
-            <div className="flex items-center space-x-1 bg-gray-50 rounded-lg px-3 py-1 self-start">
-              <Star className="h-4 w-4 text-yellow-400 fill-current" />
-              <span className="text-sm font-semibold">{listing.rating}</span>
             </div>
           </div>
           
@@ -685,7 +679,6 @@ const ListingsPage = () => {
                     <RefreshCw className="h-5 w-5" />
                     <span>Încearcă din nou</span>
                   </button>
-                  <FixSupabaseButton buttonText="Repară Conexiunea" />
                 </div>
               </div>
             )}

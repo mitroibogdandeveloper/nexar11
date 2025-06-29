@@ -6,7 +6,7 @@ import {
   ChevronRight, Calendar, Shield, Building, 
   Lock, AlertTriangle, CheckCircle, X, ChevronDown
 } from 'lucide-react';
-import { supabase, auth, profiles, romanianCities } from '../lib/supabase';
+import { supabase, auth, profiles, romanianCities, listings } from '../lib/supabase';
 
 const ProfilePage = () => {
   const { id } = useParams();
@@ -19,6 +19,7 @@ const ProfilePage = () => {
   const [editedProfile, setEditedProfile] = useState<any>({});
   const [activeTab, setActiveTab] = useState('listings');
   const [userListings, setUserListings] = useState<any[]>([]);
+  const [pendingListings, setPendingListings] = useState<any[]>([]);
   const [isLoadingListings, setIsLoadingListings] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -32,7 +33,7 @@ const ProfilePage = () => {
   const [passwordChangeSuccess, setPasswordChangeSuccess] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [filteredCities, setFilteredCities] = useState<string[]>([]);
-
+  const [loadingTimeout, setLoadingTimeout] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Set a timeout to show an error message if loading takes too long
@@ -97,6 +98,10 @@ const ProfilePage = () => {
       setError('A apărut o eroare la încărcarea profilului');
     } finally {
       setIsLoading(false);
+      if (loadingTimeout) {
+        clearTimeout(loadingTimeout);
+        setLoadingTimeout(null);
+      }
     }
   };
 
@@ -104,18 +109,36 @@ const ProfilePage = () => {
     try {
       setIsLoadingListings(true);
       
-      const { data, error } = await supabase
+      // Obținem anunțurile active
+      const { data: activeData, error: activeError } = await supabase
         .from('listings')
         .select('*')
         .eq('seller_id', profileId)
+        .eq('status', 'active')
         .order('created_at', { ascending: false });
       
-      if (error) {
-        console.error('Error loading user listings:', error);
-        return;
+      if (activeError) {
+        console.error('Error loading active listings:', activeError);
+      } else {
+        setUserListings(activeData || []);
       }
       
-      setUserListings(data || []);
+      // Obținem anunțurile în așteptare (doar pentru utilizatorul curent)
+      if (isCurrentUser) {
+        const { data: pendingData, error: pendingError } = await supabase
+          .from('listings')
+          .select('*')
+          .eq('seller_id', profileId)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false });
+        
+        if (pendingError) {
+          console.error('Error loading pending listings:', pendingError);
+        } else {
+          setPendingListings(pendingData || []);
+        }
+      }
+      
     } catch (err) {
       console.error('Error loading user listings:', err);
     } finally {
@@ -313,7 +336,7 @@ const ProfilePage = () => {
 
   const handleEditListing = (listingId: string) => {
     // Verificăm dacă anunțul aparține utilizatorului curent
-    const listing = userListings.find(l => l.id === listingId);
+    const listing = [...userListings, ...pendingListings].find(l => l.id === listingId);
     
     if (!listing) {
       alert('Anunțul nu a fost găsit');
@@ -335,7 +358,7 @@ const ProfilePage = () => {
     
     try {
       // Verificăm dacă anunțul aparține utilizatorului curent
-      const listing = userListings.find(l => l.id === listingId);
+      const listing = [...userListings, ...pendingListings].find(l => l.id === listingId);
       
       if (!listing) {
         alert('Anunțul nu a fost găsit');
@@ -360,7 +383,11 @@ const ProfilePage = () => {
       }
       
       // Actualizăm lista de anunțuri
-      setUserListings(prev => prev.filter(listing => listing.id !== listingId));
+      if (listing.status === 'active') {
+        setUserListings(prev => prev.filter(listing => listing.id !== listingId));
+      } else if (listing.status === 'pending') {
+        setPendingListings(prev => prev.filter(listing => listing.id !== listingId));
+      }
       
       alert('Anunțul a fost șters cu succes!');
     } catch (err) {
@@ -760,6 +787,13 @@ const ProfilePage = () => {
                   <div className="text-2xl font-bold text-nexar-accent">{userListings.length}</div>
                   <div className="text-sm text-gray-600">Anunțuri Active</div>
                 </div>
+                
+                {isCurrentUser && (
+                  <div className="bg-yellow-50 rounded-xl p-4 text-center">
+                    <div className="text-2xl font-bold text-yellow-600">{pendingListings.length}</div>
+                    <div className="text-sm text-gray-600">Anunțuri în Așteptare</div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -777,15 +811,28 @@ const ProfilePage = () => {
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  Anunțurile Mele
+                  Anunțuri Active
                 </button>
+                
+                {isCurrentUser && (
+                  <button
+                    onClick={() => setActiveTab('pending')}
+                    className={`flex-1 py-4 px-6 text-center font-semibold transition-colors ${
+                      activeTab === 'pending'
+                        ? 'text-nexar-accent border-b-2 border-nexar-accent'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Anunțuri în Așteptare
+                  </button>
+                )}
               </div>
 
-              {/* Listings Tab */}
+              {/* Active Listings Tab */}
               {activeTab === 'listings' && (
                 <div className="p-6">
                   <h2 className="text-xl font-semibold text-gray-900 mb-6">
-                    {isCurrentUser ? 'Anunțurile Mele' : `Anunțurile lui ${profile.name}`}
+                    {isCurrentUser ? 'Anunțurile Mele Active' : `Anunțurile lui ${profile.name}`}
                   </h2>
                   
                   {isLoadingListings ? (
@@ -804,7 +851,7 @@ const ProfilePage = () => {
                           onClick={() => navigate('/adauga-anunt')}
                           className="mt-4 bg-nexar-accent text-white px-6 py-2 rounded-lg font-semibold hover:bg-nexar-gold transition-colors"
                         >
-                          Adaugă Primul Anunț
+                          Adaugă Anunț
                         </button>
                       )}
                     </div>
@@ -831,11 +878,9 @@ const ProfilePage = () => {
                                 <div>
                                   <h3 className="text-lg font-semibold text-gray-900 mb-2">{listing.title}</h3>
                                   <div className="text-xl font-bold text-nexar-accent mb-2">€{listing.price.toLocaleString()}</div>
-                                </div>
-                                
-                                <div className="flex items-center space-x-1 bg-gray-50 rounded-lg px-2 py-1">
-                                  <Eye className="h-4 w-4 text-gray-500" />
-                                  <span className="text-xs font-medium">{listing.views_count || 0}</span>
+                                  <div className="text-sm text-gray-600 mb-2">
+                                    <span className="font-medium">{listing.brand}</span> {listing.model}
+                                  </div>
                                 </div>
                               </div>
                               
@@ -852,7 +897,6 @@ const ProfilePage = () => {
                                   <Calendar className="h-4 w-4" />
                                   <span>{new Date(listing.created_at).toLocaleDateString('ro-RO')}</span>
                                 </div>
-                              
                               </div>
                               
                               {isCurrentUser && (
@@ -880,6 +924,111 @@ const ProfilePage = () => {
                                   </button>
                                 </div>
                               )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Pending Listings Tab - Only for current user */}
+              {activeTab === 'pending' && isCurrentUser && (
+                <div className="p-6">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-6">
+                    Anunțuri în Așteptare
+                  </h2>
+                  
+                  {isLoadingListings ? (
+                    <div className="text-center py-8">
+                      <div className="w-12 h-12 border-4 border-nexar-accent border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                      <p className="text-gray-600">Se încarcă anunțurile...</p>
+                    </div>
+                  ) : pendingListings.length === 0 ? (
+                    <div className="text-center py-8 bg-gray-50 rounded-xl">
+                      <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        Nu ai anunțuri în așteptare
+                      </h3>
+                      <p className="text-gray-600 max-w-md mx-auto">
+                        Anunțurile tale vor apărea aici în timp ce așteaptă aprobarea administratorilor.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {pendingListings.map(listing => (
+                        <div key={listing.id} className="bg-yellow-50 border border-yellow-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
+                          <div className="flex flex-col sm:flex-row">
+                            <div className="relative w-full sm:w-48 h-40 sm:h-auto">
+                              <img
+                                src={listing.images && listing.images[0] ? listing.images[0] : "https://images.pexels.com/photos/2116475/pexels-photo-2116475.jpeg"}
+                                alt={listing.title}
+                                className="w-full h-full object-cover"
+                              />
+                              <div className="absolute top-2 left-2">
+                                <span className="bg-yellow-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
+                                  În așteptare
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex-1 p-4">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h3 className="text-lg font-semibold text-gray-900 mb-2">{listing.title}</h3>
+                                  <div className="text-xl font-bold text-nexar-accent mb-2">€{listing.price.toLocaleString()}</div>
+                                  <div className="text-sm text-gray-600 mb-2">
+                                    <span className="font-medium">{listing.brand}</span> {listing.model}
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="grid grid-cols-3 gap-2 mb-4 text-sm">
+                                <div className="flex items-center space-x-1 text-gray-600">
+                                  <Calendar className="h-4 w-4" />
+                                  <span>{listing.year}</span>
+                                </div>
+                                <div className="flex items-center space-x-1 text-gray-600">
+                                  <MapPin className="h-4 w-4" />
+                                  <span>{listing.location}</span>
+                                </div>
+                                <div className="flex items-center space-x-1 text-gray-600">
+                                  <Calendar className="h-4 w-4" />
+                                  <span>{new Date(listing.created_at).toLocaleDateString('ro-RO')}</span>
+                                </div>
+                              </div>
+                              
+                              <div className="bg-yellow-100 p-3 rounded-lg mb-4">
+                                <p className="text-yellow-800 text-sm flex items-center">
+                                  <AlertTriangle className="h-4 w-4 mr-2" />
+                                  Acest anunț așteaptă aprobarea administratorilor. Vei fi notificat când va fi aprobat.
+                                </p>
+                              </div>
+                              
+                              <div className="flex space-x-2">
+                                <button
+                                  onClick={() => navigate(`/anunt/${listing.id}`)}
+                                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors flex items-center space-x-1"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                  <span>Vezi</span>
+                                </button>
+                                <button
+                                  onClick={() => handleEditListing(listing.id)}
+                                  className="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-medium hover:bg-blue-200 transition-colors flex items-center space-x-1"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                  <span>Editează</span>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteListing(listing.id)}
+                                  className="bg-red-100 text-red-700 px-4 py-2 rounded-lg font-medium hover:bg-red-200 transition-colors flex items-center space-x-1"
+                                >
+                                  <X className="h-4 w-4" />
+                                  <span>Șterge</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
