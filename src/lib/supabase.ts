@@ -11,7 +11,9 @@ import { v4 as uuidv4 } from "uuid";
 const supabaseUrl =
 	import.meta.env.VITE_SUPABASE_URL ||
 	"https://tidnmzsivsthwwcfdzyo.supabase.co";
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
+	"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpZG5tenNpdnN0aHd3Y2ZkenlvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3MjE5NTgsImV4cCI6MjA2NjI5Nzk1OH0.Sr1gSZ2qtoff7gmulkT8uIzB8eL7gqKUUNVj82OqHog";
 
 // ATENȚIE: Această cheie (Service Role Key) este una cu drepturi depline și
 // NU ar trebui să fie expusă direct în codul client-side (browser) în producție!
@@ -19,6 +21,15 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 // În Vite (și alte bundlere moderne), variabilele de mediu client-side sunt accesate via import.meta.env
 const supabaseServiceRoleKey =
 	import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || "";
+
+// Verificăm că avem valorile necesare
+if (!supabaseUrl) {
+	throw new Error("VITE_SUPABASE_URL is required");
+}
+
+if (!supabaseAnonKey) {
+	throw new Error("VITE_SUPABASE_ANON_KEY is required");
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 	auth: {
